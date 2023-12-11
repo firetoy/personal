@@ -1,0 +1,89 @@
+---
+- name: Install and configure LAMP stack for Wordpress
+  hosts: your_server
+  become: yes
+  vars:
+    mysql_root_password: your_root_password
+  tasks:
+    - name: Ensure the latest packages are installed
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install Apache server
+      apt:
+        name: apache2
+        state: present
+
+    - name: Install Mariadb
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - mariadb-server
+        - mariadb-client
+
+    - name: Start the service of Mariadb
+      systemd:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Secure the Database
+      mysql_user:
+        name: root
+        password: "{{ mysql_root_password }}"
+        login_user: root
+        login_password: ""
+        state: present
+
+    - name: Install PHP
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - php
+        - php-mysql
+        - php-cgi
+        - php-cli
+        - php-gd
+
+    - name: Download Wordpress
+      get_url:
+        url: "https://wordpress.org/latest.zip"
+        dest: "/tmp/latest.zip"
+
+    - name: Unzip Wordpress
+      unarchive:
+        src: "/tmp/latest.zip"
+        dest: "/var/www/html/"
+        remote_src: yes
+        extra_opts: -d /var/www/html/
+
+    - name: Set file permissions
+      file:
+        path: "/var/www/html/"
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+    - name: Restart Apache service
+      systemd:
+        name: apache2
+        state: restarted
+
+    - name: Create MySQL database for Wordpress
+      mysql_db:
+        name: ittalk
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create MySQL user for Wordpress
+      mysql_user:
+        name: ericktech
+        password: Nomanas1
+        priv: "ittalk.*:ALL"
+        host: localhost
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
