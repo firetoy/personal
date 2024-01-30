@@ -1,1 +1,1 @@
-this are diverse playbooks which deal with software installationa and configuration
+this are diverse playbooks which deal with software installation and configuration
