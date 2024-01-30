@@ -1,0 +1,142 @@
+---
+- name: glpi
+  hosts: glpi.cdc.wdwoffice.net
+  serial: 1
+  become: yes
+  vars:
+    glpi_php_version: 8.1
+    nginx_config_path: /etc/nginx/sites-available
+    nginx_sites_enabled_path: /etc/nginx/sites-enabled
+    cdc_database_host: mysql.cdc.wdwoffice.net
+    glpi_db_host: "{{cdc_database_host}}"
+    glpi_db_user: glpi
+    glpi_db_name: glpi
+    glpi_db_password: KFXAPFXxQfnrVTWYqWD5j4
+
+  roles:
+    - nginx
+    - php-ondrej-ppa
+
+  tasks:
+    - name: Update package lists
+      apt:
+        update_cache: yes
+
+    - name: Upgrade packages
+      apt:
+        upgrade: yes
+        autoclean: yes
+
+    - name: Write Nginx configuration into the file
+      ansible.builtin.copy:
+        content: |
+          server {
+              listen 80;
+              server_name glpi.cdc.wdwoffice.net;
+              root /var/www/html/glpi;
+
+              location / {
+                  index index.php;
+                  try_files $uri $uri/ /index.php?$args;
+              }
+
+              location ~ \.php$ {
+                  include snippets/fastcgi-php.conf;
+                  fastcgi_pass unix:/var/run/php/php{{ glpi_php_version }}-fpm.sock;
+              }
+
+              location ~ /\.ht {
+                  deny all;
+              }
+          }
+        dest: "{{ nginx_config_path }}/glpi"
+
+    - name: Create symbolic link to enable the site
+      file:
+        src: "{{ nginx_config_path }}/glpi"
+        dest: "{{ nginx_sites_enabled_path }}/glpi"
+        state: link
+
+    - name: Install PHP with recommended extensions
+      apt:
+        name:
+          - php{{ glpi_php_version }}-fpm
+          - php{{ glpi_php_version }}-mysql
+          - php{{ glpi_php_version }}-mbstring
+          - php{{ glpi_php_version }}-gd
+          - php{{ glpi_php_version }}-xml
+          - php{{ glpi_php_version }}-curl
+          - php{{ glpi_php_version }}-ldap
+          - php{{ glpi_php_version }}-zip
+          - php{{ glpi_php_version }}-imagick
+          - php{{ glpi_php_version }}-imap
+          - php-memcache
+          - php{{ glpi_php_version }}-pspell
+          - php{{ glpi_php_version }}-tidy
+          - php{{ glpi_php_version }}-xmlrpc
+          - php{{ glpi_php_version }}-xsl
+          - php{{ glpi_php_version }}-ldap
+          - php-cas
+          - php-apcu
+          - libapache2-mod-php{{ glpi_php_version }}
+          - php{{ glpi_php_version }}-mysql
+          - php-bz2
+          - php8.1-intl
+        state: latest
+
+    - name: Get latest glpi release version
+      uri:
+        url: "https://api.github.com/repos/glpi-project/glpi/releases/latest"
+        method: GET
+      register: latest_release
+
+    - name: Set glpi version
+      set_fact:
+        glpi_version: "{{ latest_release.json.tag_name | regex_replace('^v', '') }}"
+
+    - name: Download glpi archive
+      command: "wget https://github.com/glpi-project/glpi/releases/download/{{ glpi_version }}/glpi-{{ glpi_version }}.tgz -P /var/www/html/"
+      args:
+        creates: "/var/www/html/glpi-{{ glpi_version }}.tgz"
+
+    - name: Extract glpi archive
+      ansible.builtin.unarchive:
+        src: "/var/www/html/glpi-{{ glpi_version }}.tgz"
+        dest: "/var/www/html/"
+        remote_src: yes
+    
+    - name: Write Nginx configuration into the file
+      ansible.builtin.copy:
+        content: |
+          <?php
+          class DB extends DBmysql {
+             public $dbhost = '{{ glpi_db_host }}';
+             public $dbuser = '{{ glpi_db_user }}';
+             public $dbpassword = '{{ glpi_db_password }}';
+             public $dbdefault = '{{ glpi_db_name }}';
+             public $use_utf8mb4 = true;
+             public $allow_myisam = false;
+             public $allow_datetime = false;
+             public $allow_signed_keys = false;
+          }    
+        dest: "/var/www/html/glpi/config/config_db.php"
+
+    - name: Set ownership for glpi directory
+      command: "sudo chown -R www-data:www-data /var/www/html/glpi"
+
+    - name: Set permissions for glpi directory
+      command: "sudo chmod -R 755 /var/www/html/glpi"  
+
+    - name: Check Nginx configuration
+      command: "sudo nginx -t"
+
+    - name: Reload Nginx to apply changes
+      systemd:
+        name: nginx
+        state: reloaded
+
+    - name: "remove default nginx site"
+      file:
+        name: /etc/nginx/sites-enabled/default
+        state: absent    
+
