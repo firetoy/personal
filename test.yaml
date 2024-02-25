@@ -1,6 +1,6 @@
 ---
 - name: Install neogeo BIOS
-  hosts: Ubuntuhosts
+  hosts: all
   become: yes
   tasks:
     - name: update packages
