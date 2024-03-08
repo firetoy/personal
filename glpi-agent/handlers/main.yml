@@ -1,0 +1,8 @@
+---
+- name: Restart GLPI Agent service
+  systemd:
+    name: glpi-agent
+    state: restarted
+    enabled: false
+  listen: "restart glpi-agent"
+  notify: "restart glpi-agent"

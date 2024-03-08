@@ -1,0 +1,36 @@
+---
+- name: Install a .deb package from the internet
+  ansible.builtin.apt:
+    deb: "{{ glpi_agent_source }}"
+
+- name: Disable GLPI Agent service
+  ansible.builtin.systemd:
+    name: glpi-agent
+    state: stopped
+    enabled: false
+
+- name: Set up agent config file
+  ansible.builtin.template:
+    src: files/agent.cfg.j2
+    dest: /etc/glpi-agent/conf.d/agent.cfg
+    owner: root
+    group: root
+    mode: '0640'
+      
+- name: Create GLPI inventory file
+  ansible.builtin.file:
+    path: /tmp/glpi-inventory.json
+    state: touch
+
+- name: Run GLPI inventory and inject results
+  ansible.builtin.shell: >
+    glpi-inventory > /tmp/glpi-inventory.json &&
+    glpi-injector --file /tmp/glpi-inventory.json -u {{glpi_endpoint}}
+
+- name: Set up weekly cron job for GLPI inventory
+  ansible.builtin.cron:
+    name: Run GLPI inventory weekly
+    minute: "{{ 60 | random(seed=inventory_hostname) }}" # use hostname as seed to alsways get same random number
+    hour: 13
+    weekday: 1
+    job: "glpi-inventory > /tmp/glpi-inventory.json && glpi-injector --file /tmp/glpi-inventory.json -u  {{glpi_endpoint}}"
