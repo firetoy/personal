@@ -1,9 +1,0 @@
----
-- name: Install neogeo BIOS
-  hosts: all
-  become: yes
-  tasks:
-    - name: update packages
-      apt:
-        update_cache: yes
-        state: present	
